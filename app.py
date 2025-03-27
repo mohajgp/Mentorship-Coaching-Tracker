@@ -43,7 +43,7 @@ if df.empty:
     st.stop()
 
 # -------------------- SIDEBAR FILTERS --------------------
-st.sidebar.header("📅 Filter Sessions")
+st.sidebar.header("🗓️ Filter Sessions")
 
 min_date = df['Timestamp'].min()
 max_date = df['Timestamp'].max()
@@ -132,6 +132,11 @@ fig_bar = px.bar(
 
 st.plotly_chart(fig_bar, use_container_width=True)
 
+# -------------------- NEW: TABLE OF TOTAL SUBMISSIONS PER COUNTY --------------------
+st.subheader("🔢 Total Submissions Per County")
+
+st.dataframe(county_counts.sort_values(by='Submissions', ascending=False).reset_index(drop=True))
+
 # -------------------- NON-SUBMISSIONS ANALYSIS --------------------
 st.subheader("🚫 Counties with No Submissions")
 
@@ -158,7 +163,7 @@ if no_submission_counties:
     copy_text = f"""
 🚫 Counties with No Submissions
 
-📅 Period: {start_date} to {end_date}
+🗓️ Period: {start_date} to {end_date}
 
 Counties with NO Submissions:
 """
@@ -171,7 +176,7 @@ Counties with NO Submissions:
     st.text_area("📋 Copy the report below:", value=copy_text, height=250)
 
     # Copy to clipboard button
-    if st.button("📎 Copy to Clipboard"):
+    if st.button("📌 Copy to Clipboard"):
         pyperclip.copy(copy_text)
         st.success("✅ Text copied to clipboard!")
 
@@ -195,7 +200,7 @@ if not filtered_df.empty:
     csv_data = convert_df_to_csv(filtered_df)
 
     st.download_button(
-        label="📥 Download Filtered Data as CSV",
+        label="📅 Download Filtered Data as CSV",
         data=csv_data,
         file_name=f"Mentorship_Submissions_{datetime.now().strftime('%Y-%m-%d')}.csv",
         mime='text/csv'
