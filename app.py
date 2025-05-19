@@ -42,7 +42,7 @@ def load_and_merge_data():
         'Timestamp': 'Timestamp',
         '14. County of Business Location': 'County',
         '12. Gender of mentee (participant)': 'Gender',
-        '11. Age of mentee (full years)': 'Age', 
+        '11. Age of mentee (full years)': 'Age',
     }, inplace=True)
 
     df_old['Timestamp'] = pd.to_datetime(df_old['Timestamp'], errors='coerce')
@@ -83,8 +83,8 @@ st.sidebar.header("🗓️ Filter Sessions")
 min_date = df['Timestamp'].min().date()
 max_date = df['Timestamp'].max().date()
 
-st.sidebar.markdown(f"🗓️ **Earliest Submission**: `{min_date}`")
-st.sidebar.markdown(f"🗓️ **Latest Submission**: `{max_date}`")
+st.sidebar.markdown(f"🗓️ **Earliest Submission**: {min_date}")
+st.sidebar.markdown(f"🗓️ **Latest Submission**: {max_date}")
 
 # Date Range Filter
 date_range = st.sidebar.date_input("Select Date Range:", value=(min_date, max_date), min_value=min_date, max_value=max_date)
@@ -165,6 +165,19 @@ county_counts = filtered_df.groupby('County').size().reset_index(name='Submissio
 fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Submissions by County')
 st.plotly_chart(fig_bar, use_container_width=True)
 
+# -------------------- COUNTY SUBMISSION TABLE AND DOWNLOAD --------------------
+st.subheader("📊 County Submissions Data")
+county_submission_df = filtered_df.groupby('County').size().reset_index(name='Submissions')
+st.dataframe(county_submission_df)  # Display the table in Streamlit
+
+csv_data = county_submission_df.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="⬇️ Download County Submissions CSV",
+    data=csv_data,
+    file_name=f"County_Submissions_{datetime.now().date()}.csv",
+    mime='text/csv'
+)
+
 # -------------------- SUBMISSIONS OVER TIME --------------------
 st.subheader("📆 Submissions Over Time")
 daily_counts = filtered_df.groupby(filtered_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
@@ -193,4 +206,14 @@ if not filtered_df.empty:
 else:
     st.info("ℹ️ No submissions match current filters.")
 
+# -------------------- MERGED DATA TABLE AND DOWNLOAD --------------------
+st.subheader("➕ Merged Data Table")
+st.dataframe(df)
 
+csv_data_merged = df.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="📥 Download Merged CSV",
+    data=csv_data_merged,
+    file_name=f"Mentorship_Merged_Data_{datetime.now().date()}.csv",
+    mime='text/csv'
+)
