@@ -31,6 +31,8 @@ def load_and_merge_data():
     df_old['Form Version'] = 'Original'
     df_new['Form Version'] = 'New'
 
+    # Rename columns to a consistent set for critical filters/display
+    # This only renames existing columns, doesn't drop others.
     df_old.rename(columns={
         'Timestamp': 'Timestamp',
         'County': 'County',
@@ -45,28 +47,24 @@ def load_and_merge_data():
         '11. Age of mentee (full years)': 'Age',
     }, inplace=True)
 
+    # Convert Timestamp to datetime objects
     df_old['Timestamp'] = pd.to_datetime(df_old['Timestamp'], errors='coerce')
     df_new['Timestamp'] = pd.to_datetime(df_new['Timestamp'], errors='coerce')
 
+    # Standardize 'County', 'Gender' by stripping spaces and title-casing
     df_old['County'] = df_old['County'].astype(str).str.strip().str.title()
     df_new['County'] = df_new['County'].astype(str).str.strip().str.title()
 
     df_old['Gender'] = df_old['Gender'].astype(str).str.strip().str.title()
     df_new['Gender'] = df_new['Gender'].astype(str).str.strip().str.title()
 
+    # Convert 'Age' to numeric
     df_old['Age'] = pd.to_numeric(df_old['Age'], errors='coerce')
     df_new['Age'] = pd.to_numeric(df_new['Age'], errors='coerce')
 
-    # Selecting only relevant columns before concatenation to avoid future KeyError issues
-    # and to ensure a clean merge with consistent columns.
-    common_cols = ['Timestamp', 'County', 'Gender', 'Age', 'Form Version']
-    # Ensure all required columns exist in both dataframes before selection
-    # For columns not in df_old or df_new, they will be dropped, which is fine
-    # as you only specified the common ones in your original rename.
-    df_old_processed = df_old.reindex(columns=df_old.columns.intersection(common_cols))
-    df_new_processed = df_new.reindex(columns=df_new.columns.intersection(common_cols))
-
-    return pd.concat([df_old_processed, df_new_processed], ignore_index=True)
+    # Concatenate without dropping any columns.
+    # Missing columns will be filled with NaN.
+    return pd.concat([df_old, df_new], ignore_index=True)
 
 
 # -------------------- ALL COUNTIES --------------------
@@ -289,18 +287,22 @@ if not filtered_df.empty:
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         # Filter for 'Original' (Old Template)
-        df_original = filtered_df[filtered_df['Form Version'] == 'Original'].drop(columns=['Form Version'], errors='ignore')
+        df_original = filtered_df[filtered_df['Form Version'] == 'Original']
         if not df_original.empty:
-            df_original.to_excel(writer, sheet_name='Old Template Data', index=False)
+            # Optionally drop 'Form Version' if you prefer it not to appear on the sheet
+            df_original_to_excel = df_original.drop(columns=['Form Version'], errors='ignore')
+            df_original_to_excel.to_excel(writer, sheet_name='Old Template Data', index=False)
         else:
             # Create an empty DataFrame to write an empty sheet or a sheet with a message
             pd.DataFrame({"Message": ["No data for Old Template in this selection."]}).to_excel(writer, sheet_name='Old Template Data', index=False)
 
 
         # Filter for 'New' (New Template)
-        df_new = filtered_df[filtered_df['Form Version'] == 'New'].drop(columns=['Form Version'], errors='ignore')
+        df_new = filtered_df[filtered_df['Form Version'] == 'New']
         if not df_new.empty:
-            df_new.to_excel(writer, sheet_name='New Template Data', index=False)
+            # Optionally drop 'Form Version' if you prefer it not to appear on the sheet
+            df_new_to_excel = df_new.drop(columns=['Form Version'], errors='ignore')
+            df_new_to_excel.to_excel(writer, sheet_name='New Template Data', index=False)
         else:
             # Create an empty DataFrame to write an empty sheet or a sheet with a message
             pd.DataFrame({"Message": ["No data for New Template in this selection."]}).to_excel(writer, sheet_name='New Template Data', index=False)
