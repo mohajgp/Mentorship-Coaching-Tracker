@@ -57,13 +57,7 @@ def load_and_merge_data():
     df_old['Age'] = pd.to_numeric(df_old['Age'], errors='coerce')
     df_new['Age'] = pd.to_numeric(df_new['Age'], errors='coerce')
 
-    # Align columns before merging
-    common_cols = list(set(df_old.columns) & set(df_new.columns))
-    df_old_aligned = df_old[common_cols]
-    df_new_aligned = df_new[common_cols]
-
-    # Concatenate aligned DataFrames
-    return pd.concat([df_old_aligned, df_new_aligned], ignore_index=True)
+    return pd.concat([df_old, df_new], ignore_index=True)
 
 # -------------------- ALL COUNTIES --------------------
 all_counties_47 = [
@@ -174,7 +168,7 @@ st.plotly_chart(fig_bar, use_container_width=True)
 # -------------------- COUNTY SUBMISSION TABLE AND DOWNLOAD --------------------
 st.subheader("📊 County Submissions Data")
 county_submission_df = filtered_df.groupby('County').size().reset_index(name='Submissions')
-st.dataframe(county_submission_df)
+st.dataframe(county_submission_df)  # Display the table in Streamlit
 
 csv_data = county_submission_df.to_csv(index=False).encode('utf-8')
 st.download_button(
@@ -223,3 +217,6 @@ st.download_button(
     file_name=f"Mentorship_Merged_Data_{datetime.now().date()}.csv",
     mime='text/csv'
 )
+
+
+
