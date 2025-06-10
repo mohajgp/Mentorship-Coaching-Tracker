@@ -25,12 +25,15 @@ def load_and_merge_data():
     df_old = pd.read_csv(OLD_FORM_URL)
     df_new = pd.read_csv(NEW_FORM_URL)
 
+    # Strip and normalize column names
     df_old.columns = df_old.columns.str.strip()
     df_new.columns = df_new.columns.str.strip()
 
+    # Tag form versions
     df_old['Form Version'] = 'Original'
     df_new['Form Version'] = 'New'
 
+    # Rename important columns
     df_old.rename(columns={
         'Timestamp': 'Timestamp',
         'County': 'County',
@@ -45,19 +48,25 @@ def load_and_merge_data():
         '11. Age of mentee (full years)': 'Age',
     }, inplace=True)
 
-    df_old['Timestamp'] = pd.to_datetime(df_old['Timestamp'], errors='coerce')
-    df_new['Timestamp'] = pd.to_datetime(df_new['Timestamp'], errors='coerce')
+    # Convert and clean types
+    for df in [df_old, df_new]:
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
+        df['County'] = df['County'].astype(str).str.strip().str.title()
+        df['Gender'] = df['Gender'].astype(str).str.strip().str.title()
+        df['Age'] = pd.to_numeric(df['Age'], errors='coerce')
 
-    df_old['County'] = df_old['County'].astype(str).str.strip().str.title()
-    df_new['County'] = df_new['County'].astype(str).str.strip().str.title()
+    # Add missing columns to df_old to match df_new
+    for col in df_new.columns:
+        if col not in df_old.columns:
+            df_old[col] = pd.NA
 
-    df_old['Gender'] = df_old['Gender'].astype(str).str.strip().str.title()
-    df_new['Gender'] = df_new['Gender'].astype(str).str.strip().str.title()
+    # Reorder df_old to match df_new
+    df_old = df_old[df_new.columns]
 
-    df_old['Age'] = pd.to_numeric(df_old['Age'], errors='coerce')
-    df_new['Age'] = pd.to_numeric(df_new['Age'], errors='coerce')
+    # Merge both
+    merged_df = pd.concat([df_old, df_new], ignore_index=True)
 
-    return pd.concat([df_old, df_new], ignore_index=True)
+    return merged_df
 
 # -------------------- ALL COUNTIES --------------------
 all_counties_47 = [
@@ -86,23 +95,18 @@ max_date = df['Timestamp'].max().date()
 st.sidebar.markdown(f"🗓️ **Earliest Submission**: {min_date}")
 st.sidebar.markdown(f"🗓️ **Latest Submission**: {max_date}")
 
-# Date Range Filter
 date_range = st.sidebar.date_input("Select Date Range:", value=(min_date, max_date), min_value=min_date, max_value=max_date)
 start_date, end_date = date_range if isinstance(date_range, tuple) else (date_range, date_range)
 
-# Form Version Filter
 form_versions = df['Form Version'].unique().tolist()
 selected_versions = st.sidebar.multiselect("Select Form Version:", options=form_versions, default=form_versions)
 
-# County Filter
 counties = df['County'].dropna().unique()
 selected_counties = st.sidebar.multiselect("Select Counties:", options=sorted(counties), default=sorted(counties))
 
-# Gender Filter
 genders = df['Gender'].dropna().unique()
 selected_genders = st.sidebar.multiselect("Select Gender:", options=sorted(genders), default=sorted(genders))
 
-# Apply Filters
 filtered_df = df[
     (df['Timestamp'].dt.date >= start_date) &
     (df['Timestamp'].dt.date <= end_date) &
@@ -136,7 +140,7 @@ summary_text = f"""
 📍 **Counties Covered**: {unique_counties}
 👥 **Unique Participants**: {total_participants}
 
-🚫 **Counties with No Submissions**: {len(no_submission_counties)}
+🚫 **Counties with No Submissions**: {len(no_submission_counties)} ({', '.join(no_submission_counties)})
 """
 st.text_area("📋 Copy this Summary for Emailing:", value=summary_text, height=200)
 if st.button("📋 Copy to Clipboard"):
@@ -167,10 +171,9 @@ st.plotly_chart(fig_bar, use_container_width=True)
 
 # -------------------- COUNTY SUBMISSION TABLE AND DOWNLOAD --------------------
 st.subheader("📊 County Submissions Data")
-county_submission_df = filtered_df.groupby('County').size().reset_index(name='Submissions')
-st.dataframe(county_submission_df)  # Display the table in Streamlit
+st.dataframe(county_counts)
 
-csv_data = county_submission_df.to_csv(index=False).encode('utf-8')
+csv_data = county_counts.to_csv(index=False).encode('utf-8')
 st.download_button(
     label="⬇️ Download County Submissions CSV",
     data=csv_data,
@@ -195,7 +198,6 @@ else:
 st.subheader("📄 Filtered Data Table")
 if not filtered_df.empty:
     st.dataframe(filtered_df)
-
     csv_data = filtered_df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📅 Download CSV",
@@ -217,6 +219,3 @@ st.download_button(
     file_name=f"Mentorship_Merged_Data_{datetime.now().date()}.csv",
     mime='text/csv'
 )
-
-
-
