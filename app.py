@@ -25,15 +25,12 @@ def load_and_merge_data():
     df_old = pd.read_csv(OLD_FORM_URL)
     df_new = pd.read_csv(NEW_FORM_URL)
 
-    # Strip and normalize column names
     df_old.columns = df_old.columns.str.strip()
     df_new.columns = df_new.columns.str.strip()
 
-    # Tag form versions
     df_old['Form Version'] = 'Original'
     df_new['Form Version'] = 'New'
 
-    # Rename important columns
     df_old.rename(columns={
         'Timestamp': 'Timestamp',
         'County': 'County',
@@ -48,22 +45,20 @@ def load_and_merge_data():
         '11. Age of mentee (full years)': 'Age',
     }, inplace=True)
 
-    # Convert and clean types
     for df in [df_old, df_new]:
         df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
         df['County'] = df['County'].astype(str).str.strip().str.title()
         df['Gender'] = df['Gender'].astype(str).str.strip().str.title()
         df['Age'] = pd.to_numeric(df['Age'], errors='coerce')
 
-    # Add missing columns to df_old to match df_new
+    # Add missing columns to df_old
     for col in df_new.columns:
         if col not in df_old.columns:
             df_old[col] = pd.NA
 
-    # Reorder df_old to match df_new
+    # Align column order
     df_old = df_old[df_new.columns]
 
-    # Merge both
     merged_df = pd.concat([df_old, df_new], ignore_index=True)
 
     return merged_df
@@ -118,8 +113,8 @@ filtered_df = df[
 # -------------------- METRICS --------------------
 st.subheader("📈 Summary Metrics")
 
-total_sessions = df.shape[0]
-filtered_sessions = filtered_df.shape[0]
+total_sessions = df['Timestamp'].notna().sum()  # Count valid rows only
+filtered_sessions = filtered_df['Timestamp'].notna().sum()
 unique_counties = filtered_df['County'].nunique()
 total_participants = filtered_df.drop_duplicates(subset=['County', 'Gender']).shape[0]
 
@@ -169,18 +164,6 @@ county_counts = filtered_df.groupby('County').size().reset_index(name='Submissio
 fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Submissions by County')
 st.plotly_chart(fig_bar, use_container_width=True)
 
-# -------------------- COUNTY SUBMISSION TABLE AND DOWNLOAD --------------------
-st.subheader("📊 County Submissions Data")
-st.dataframe(county_counts)
-
-csv_data = county_counts.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="⬇️ Download County Submissions CSV",
-    data=csv_data,
-    file_name=f"County_Submissions_{datetime.now().date()}.csv",
-    mime='text/csv'
-)
-
 # -------------------- SUBMISSIONS OVER TIME --------------------
 st.subheader("📆 Submissions Over Time")
 daily_counts = filtered_df.groupby(filtered_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
@@ -194,10 +177,15 @@ if no_submission_counties:
 else:
     st.success("✅ All counties have submissions in selected date range.")
 
-# -------------------- DATA TABLE & DOWNLOAD --------------------
-st.subheader("📄 Filtered Data Table")
+# -------------------- SAFE FILTERED DATA TABLE --------------------
+st.subheader("📄 Filtered Data Table (Safe View)")
+
+# Exclude columns that cause Arrow issues (giant text fields)
+safe_columns = [col for col in filtered_df.columns if filtered_df[col].astype(str).str.len().max() < 500]
+filtered_df_safe = filtered_df[safe_columns]
+
 if not filtered_df.empty:
-    st.dataframe(filtered_df)
+    st.dataframe(filtered_df_safe)
     csv_data = filtered_df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📅 Download CSV",
