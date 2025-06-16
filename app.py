@@ -116,7 +116,7 @@ filtered_df = df[
 ]
 
 # -------------------- METRICS --------------------
-st.subheader("📈 Summary Metrics")
+st.subheader("📊 Summary Metrics")
 
 total_sessions = df.shape[0]
 filtered_sessions = filtered_df.shape[0]
@@ -129,93 +129,60 @@ col2.metric("📊 Filtered Sessions", f"{filtered_sessions:,}")
 col3.metric("📍 Counties Covered", unique_counties)
 col4.metric("👥 Unique Participants", total_participants)
 
-# -------------------- AUTO-GENERATED SUMMARY --------------------
-st.subheader("📝 Auto-Generated Summary Report")
-no_submission_counties = [c for c in all_counties_47 if c not in filtered_df['County'].unique()]
-summary_text = f"""
-📅 **Date Range**: {start_date} to {end_date}
+# -------------------- MONTHLY AGE-GENDER BREAKDOWN --------------------
+st.subheader("📆 Monthly Age & Gender Breakdown")
 
-✅ **Total Submissions**: {total_sessions:,}
-📊 **Filtered Submissions**: {filtered_sessions:,}
-📍 **Counties Covered**: {unique_counties}
-👥 **Unique Participants**: {total_participants}
+# Add Age Group Category
+def get_age_gender_group(row):
+    try:
+        age = int(row['Age'])
+        gender = str(row['Gender']).strip().lower()
+        if age <= 35:
+            return 'Young Female' if gender == 'female' else 'Young Male' if gender == 'male' else 'Other'
+        else:
+            return 'Above 35 Female' if gender == 'female' else 'Above 35 Male' if gender == 'male' else 'Other'
+    except:
+        return 'Other'
 
-🚫 **Counties with No Submissions**: {len(no_submission_counties)} ({', '.join(no_submission_counties)})
-"""
-st.text_area("📋 Copy this Summary for Emailing:", value=summary_text, height=200)
-if st.button("📋 Copy to Clipboard"):
-    pyperclip.copy(summary_text)
-    st.success("✅ Summary copied to clipboard!")
+# Apply categorization
+filtered_df['AgeGenderGroup'] = filtered_df.apply(get_age_gender_group, axis=1)
+filtered_df['Month'] = filtered_df['Timestamp'].dt.to_period('M')
 
-# -------------------- DOWNLOAD WORD REPORT --------------------
-st.subheader("📄 Export Summary to Word Document")
-if st.button("⬇️ Generate Word Report"):
-    doc = Document()
-    doc.add_heading("KNCCI Jiinue Mentorship Summary Report", level=1)
-    doc.add_paragraph(summary_text)
-    buffer = BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    st.download_button(
-        label="📥 Download Word Report",
-        data=buffer,
-        file_name=f"Mentorship_Summary_{datetime.now().date()}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
-
-# -------------------- COUNTY SUBMISSION BAR CHART --------------------
-st.subheader("📍 Submissions by County")
-county_counts = filtered_df.groupby('County').size().reset_index(name='Submissions')
-fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Submissions by County')
-st.plotly_chart(fig_bar, use_container_width=True)
-
-# -------------------- COUNTY SUBMISSION TABLE AND DOWNLOAD --------------------
-st.subheader("📊 County Submissions Data")
-st.dataframe(county_counts)
-
-csv_data = county_counts.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="⬇️ Download County Submissions CSV",
-    data=csv_data,
-    file_name=f"County_Submissions_{datetime.now().date()}.csv",
-    mime='text/csv'
+# Summarize by Month and Group
+monthly_summary = (
+    filtered_df.groupby(['Month', 'AgeGenderGroup'])
+    .size()
+    .reset_index(name='Count')
+    .pivot(index='Month', columns='AgeGenderGroup', values='Count')
+    .fillna(0)
+    .astype(int)
+    .reset_index()
 )
 
-# -------------------- SUBMISSIONS OVER TIME --------------------
-st.subheader("📆 Submissions Over Time")
-daily_counts = filtered_df.groupby(filtered_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
-fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Submission Trend')
-st.plotly_chart(fig_time, use_container_width=True)
+# Ensure all 4 columns are always present
+for col in ['Young Female', 'Young Male', 'Above 35 Female', 'Above 35 Male']:
+    if col not in monthly_summary.columns:
+        monthly_summary[col] = 0
 
-# -------------------- NON-SUBMISSIONS --------------------
-st.subheader("🚫 Counties with No Submissions")
-if no_submission_counties:
-    st.error(f"🚫 Counties with **NO** Submissions: {', '.join(no_submission_counties)}")
+# Show table
+st.dataframe(monthly_summary)
+
+# -------------------- MAY SPECIFIC SUMMARY --------------------
+st.subheader(":star: May 2025 Mentorship Breakdown")
+may_summary = monthly_summary[monthly_summary['Month'] == '2025-05']
+
+if not may_summary.empty:
+    may_row = may_summary.iloc[0]
+    st.markdown("""
+    - **Young Female**: {}
+    - **Young Male**: {}
+    - **Above 35 Female**: {}
+    - **Above 35 Male**: {}
+    """.format(
+        may_row.get('Young Female', 0),
+        may_row.get('Young Male', 0),
+        may_row.get('Above 35 Female', 0),
+        may_row.get('Above 35 Male', 0),
+    ))
 else:
-    st.success("✅ All counties have submissions in selected date range.")
-
-# -------------------- DATA TABLE & DOWNLOAD --------------------
-st.subheader("📄 Filtered Data Table")
-if not filtered_df.empty:
-    st.dataframe(filtered_df)
-    csv_data = filtered_df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📅 Download CSV",
-        data=csv_data,
-        file_name=f"Mentorship_Submissions_{datetime.now().date()}.csv",
-        mime='text/csv'
-    )
-else:
-    st.info("ℹ️ No submissions match current filters.")
-
-# -------------------- MERGED DATA TABLE AND DOWNLOAD --------------------
-st.subheader("➕ Merged Data Table")
-st.dataframe(df)
-
-csv_data_merged = df.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="📥 Download Merged CSV",
-    data=csv_data_merged,
-    file_name=f"Mentorship_Merged_Data_{datetime.now().date()}.csv",
-    mime='text/csv'
-)
+    st.info("No mentorship sessions recorded in May 2025.")
