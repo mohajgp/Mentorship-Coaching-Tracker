@@ -25,20 +25,19 @@ def load_and_merge_data():
     df_old = pd.read_csv(OLD_FORM_URL)
     df_new = pd.read_csv(NEW_FORM_URL)
 
-    # Strip and normalize column names
     df_old.columns = df_old.columns.str.strip()
     df_new.columns = df_new.columns.str.strip()
 
-    # Tag form versions
     df_old['Form Version'] = 'Original'
     df_new['Form Version'] = 'New'
 
-    # Rename important columns
+    # Rename key fields to standard names
     df_old.rename(columns={
         'Timestamp': 'Timestamp',
         'County': 'County',
         'Gender': 'Gender',
         'Age': 'Age',
+        'Business Phone Number': 'Phone Number'
     }, inplace=True)
 
     df_new.rename(columns={
@@ -46,27 +45,32 @@ def load_and_merge_data():
         '14. County of Business Location': 'County',
         '12. Gender of mentee (participant)': 'Gender',
         '11. Age of mentee (full years)': 'Age',
+        '10. Mobile phone Number (Format: 2547XXXXXXXX)': 'Phone Number',
+        '8. National ID (5 to 11 digits)': 'ID'
     }, inplace=True)
 
-    # Convert and clean types
+    # Convert and clean
     for df in [df_old, df_new]:
         df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
         df['County'] = df['County'].astype(str).str.strip().str.title()
         df['Gender'] = df['Gender'].astype(str).str.strip().str.title()
         df['Age'] = pd.to_numeric(df['Age'], errors='coerce')
+        df['Phone Number'] = df['Phone Number'].astype(str).str.extract(r'(\d{9,12})')
+        if 'ID' not in df.columns:
+            df['ID'] = pd.NA
 
-    # Add missing columns to df_old to match df_new
     for col in df_new.columns:
         if col not in df_old.columns:
             df_old[col] = pd.NA
-
-    # Reorder df_old to match df_new
     df_old = df_old[df_new.columns]
 
-    # Merge both
     merged_df = pd.concat([df_old, df_new], ignore_index=True)
 
-    return merged_df
+    total_before_dedup = merged_df.shape[0]
+    deduped_df = merged_df.drop_duplicates(subset=['Phone Number', 'ID'])
+    total_after_dedup = deduped_df.shape[0]
+
+    return deduped_df, total_before_dedup, total_after_dedup
 
 # -------------------- ALL COUNTIES --------------------
 all_counties_47 = [
@@ -80,8 +84,7 @@ all_counties_47 = [
 ]
 
 # -------------------- LOAD DATA --------------------
-df = load_and_merge_data()
-
+df, total_raw_rows, total_unique_rows = load_and_merge_data()
 if df.empty:
     st.error("❌ No data available! Please check both spreadsheets.")
     st.stop()
@@ -117,17 +120,11 @@ filtered_df = df[
 
 # -------------------- METRICS --------------------
 st.subheader("📈 Summary Metrics")
-
-total_sessions = df.shape[0]
-filtered_sessions = filtered_df.shape[0]
-unique_counties = filtered_df['County'].nunique()
-total_participants = filtered_df.drop_duplicates(subset=['County', 'Gender']).shape[0]
-
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("✅ Total Sessions", f"{total_sessions:,}")
-col2.metric("📊 Filtered Sessions", f"{filtered_sessions:,}")
-col3.metric("📍 Counties Covered", unique_counties)
-col4.metric("👥 Unique Participants", total_participants)
+col1.metric("📄 Raw Submissions", f"{total_raw_rows:,}")
+col2.metric("✅ Unique Mentorship Records", f"{total_unique_rows:,}")
+col3.metric("📊 Filtered Sessions", f"{filtered_df.shape[0]:,}")
+col4.metric("📍 Counties Covered", filtered_df['County'].nunique())
 
 # -------------------- AUTO-GENERATED SUMMARY --------------------
 st.subheader("📝 Auto-Generated Summary Report")
@@ -135,11 +132,10 @@ no_submission_counties = [c for c in all_counties_47 if c not in filtered_df['Co
 summary_text = f"""
 📅 **Date Range**: {start_date} to {end_date}
 
-✅ **Total Submissions**: {total_sessions:,}
-📊 **Filtered Submissions**: {filtered_sessions:,}
-📍 **Counties Covered**: {unique_counties}
-👥 **Unique Participants**: {total_participants}
-
+📄 **Raw Submissions**: {total_raw_rows:,}
+✅ **Unique Records**: {total_unique_rows:,}
+📊 **Filtered Submissions**: {filtered_df.shape[0]:,}
+📍 **Counties Covered**: {filtered_df['County'].nunique()}
 🚫 **Counties with No Submissions**: {len(no_submission_counties)} ({', '.join(no_submission_counties)})
 """
 st.text_area("📋 Copy this Summary for Emailing:", value=summary_text, height=200)
@@ -147,7 +143,7 @@ if st.button("📋 Copy to Clipboard"):
     pyperclip.copy(summary_text)
     st.success("✅ Summary copied to clipboard!")
 
-# -------------------- DOWNLOAD WORD REPORT --------------------
+# -------------------- WORD EXPORT --------------------
 st.subheader("📄 Export Summary to Word Document")
 if st.button("⬇️ Generate Word Report"):
     doc = Document()
@@ -163,13 +159,13 @@ if st.button("⬇️ Generate Word Report"):
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
-# -------------------- COUNTY SUBMISSION BAR CHART --------------------
+# -------------------- COUNTY BAR CHART --------------------
 st.subheader("📍 Submissions by County")
 county_counts = filtered_df.groupby('County').size().reset_index(name='Submissions')
 fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Submissions by County')
 st.plotly_chart(fig_bar, use_container_width=True)
 
-# -------------------- COUNTY SUBMISSION TABLE AND DOWNLOAD --------------------
+# -------------------- COUNTY TABLE --------------------
 st.subheader("📊 County Submissions Data")
 st.dataframe(county_counts)
 
@@ -181,20 +177,20 @@ st.download_button(
     mime='text/csv'
 )
 
-# -------------------- SUBMISSIONS OVER TIME --------------------
+# -------------------- DAILY TREND --------------------
 st.subheader("📆 Submissions Over Time")
 daily_counts = filtered_df.groupby(filtered_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
 fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Submission Trend')
 st.plotly_chart(fig_time, use_container_width=True)
 
-# -------------------- NON-SUBMISSIONS --------------------
+# -------------------- NON-SUBMISSION COUNTIES --------------------
 st.subheader("🚫 Counties with No Submissions")
 if no_submission_counties:
     st.error(f"🚫 Counties with **NO** Submissions: {', '.join(no_submission_counties)}")
 else:
     st.success("✅ All counties have submissions in selected date range.")
 
-# -------------------- DATA TABLE & DOWNLOAD --------------------
+# -------------------- DATA TABLES --------------------
 st.subheader("📄 Filtered Data Table")
 if not filtered_df.empty:
     st.dataframe(filtered_df)
@@ -208,10 +204,8 @@ if not filtered_df.empty:
 else:
     st.info("ℹ️ No submissions match current filters.")
 
-# -------------------- MERGED DATA TABLE AND DOWNLOAD --------------------
-st.subheader("➕ Merged Data Table")
+st.subheader("➕ Merged Full Data")
 st.dataframe(df)
-
 csv_data_merged = df.to_csv(index=False).encode('utf-8')
 st.download_button(
     label="📥 Download Merged CSV",
@@ -219,5 +213,3 @@ st.download_button(
     file_name=f"Mentorship_Merged_Data_{datetime.now().date()}.csv",
     mime='text/csv'
 )
-
- 
