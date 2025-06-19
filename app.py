@@ -15,13 +15,13 @@ st.set_page_config(
 st.title("KNCCI Jiinue Mentorship Dashboard")
 st.caption("Tracking Mentorship Sessions by Field Officers")
 
-# -------------------- GOOGLE SHEET LINKS --------------------
+# -------------------- SETTINGS --------------------
 OLD_FORM_URL = "https://docs.google.com/spreadsheets/d/107tWhbwBgF89VGCRnNSL4-_WrCIa68NGSPA4GkwVjDE/export?format=csv"
 NEW_FORM_URL = "https://docs.google.com/spreadsheets/d/1CA7WvTkEUfeMyLuxhP91BgSWbkhV_S8V94kACj5LUMM/export?format=csv"
 
-# -------------------- LOAD & COMBINE DATA --------------------
+# -------------------- LOAD AND MERGE --------------------
 @st.cache_data(ttl=300)
-def load_data():
+def load_raw_data():
     df_old = pd.read_csv(OLD_FORM_URL)
     df_new = pd.read_csv(NEW_FORM_URL)
 
@@ -57,16 +57,15 @@ def load_data():
         if 'ID' not in df.columns:
             df['ID'] = pd.NA
 
-    # Align columns and concatenate
     for col in df_new.columns:
         if col not in df_old.columns:
             df_old[col] = pd.NA
     df_old = df_old[df_new.columns]
 
-    combined_df = pd.concat([df_old, df_new], ignore_index=True)
-    return combined_df, combined_df.shape[0]
+    merged_df = pd.concat([df_old, df_new], ignore_index=True)
+    return merged_df, merged_df.shape[0]
 
-# -------------------- KNOWN COUNTIES --------------------
+# -------------------- ALL COUNTIES --------------------
 all_counties_47 = [
     "Mombasa", "Kwale", "Kilifi", "Tana River", "Lamu", "Taita Taveta",
     "Garissa", "Wajir", "Mandera", "Marsabit", "Isiolo", "Meru", "Tharaka Nithi",
@@ -77,21 +76,24 @@ all_counties_47 = [
     "Busia", "Siaya", "Kisumu", "Homa Bay", "Migori", "Kisii", "Nyamira", "Nairobi"
 ]
 
-# -------------------- LOAD DATA --------------------
-df_raw, total_raw_rows = load_data()
+# -------------------- LOAD --------------------
+df_raw, total_raw_rows = load_raw_data()
 if df_raw.empty:
-    st.error("❌ No data available! Please check the spreadsheets.")
+    st.error("❌ No data available! Please check both spreadsheets.")
     st.stop()
 
-# -------------------- FILTER UI --------------------
+# -------------------- FILTERS --------------------
 st.sidebar.header("🗓️ Filter Sessions")
 min_date = df_raw['Timestamp'].min().date()
 max_date = df_raw['Timestamp'].max().date()
 
+st.sidebar.markdown(f"🗓️ **Earliest Submission**: {min_date}")
+st.sidebar.markdown(f"🗓️ **Latest Submission**: {max_date}")
+
 date_range = st.sidebar.date_input("Select Date Range:", value=(min_date, max_date), min_value=min_date, max_value=max_date)
 start_date, end_date = date_range if isinstance(date_range, tuple) else (date_range, date_range)
 
-form_versions = df_raw['Form Version'].dropna().unique().tolist()
+form_versions = df_raw['Form Version'].unique().tolist()
 selected_versions = st.sidebar.multiselect("Select Form Version:", options=form_versions, default=form_versions)
 
 counties = df_raw['County'].dropna().unique()
@@ -100,7 +102,6 @@ selected_counties = st.sidebar.multiselect("Select Counties:", options=sorted(co
 genders = df_raw['Gender'].dropna().unique()
 selected_genders = st.sidebar.multiselect("Select Gender:", options=sorted(genders), default=sorted(genders))
 
-# -------------------- FILTER DATA --------------------
 filtered_df = df_raw[
     (df_raw['Timestamp'].dt.date >= start_date) &
     (df_raw['Timestamp'].dt.date <= end_date) &
@@ -112,23 +113,23 @@ filtered_df = df_raw[
 deduped_df = filtered_df.drop_duplicates(subset=['Phone Number', 'ID'])
 total_unique_rows = deduped_df.shape[0]
 
-# -------------------- SUMMARY METRICS --------------------
+# -------------------- METRICS --------------------
 st.subheader("📈 Summary Metrics")
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("📄 Raw Submissions", f"{total_raw_rows:,}")
-col2.metric("✅ Unique Mentorship Records", f"{total_unique_rows:,}")
-col3.metric("📊 Filtered Sessions", f"{filtered_df.shape[0]:,}")
+col1.metric("📄 Filtered Raw Records", f"{filtered_df.shape[0]:,}")
+col2.metric("✅ Unique Records (Post-Dedup)", f"{total_unique_rows:,}")
+col3.metric("📊 Filtered Sessions", f"{total_unique_rows:,}")
 col4.metric("📍 Counties Covered", deduped_df['County'].nunique())
 
-# -------------------- AUTO-GENERATED SUMMARY --------------------
+# -------------------- AUTO SUMMARY --------------------
 st.subheader("📝 Auto-Generated Summary Report")
 no_submission_counties = [c for c in all_counties_47 if c not in deduped_df['County'].unique()]
 summary_text = f"""
 📅 **Date Range**: {start_date} to {end_date}
 
-📄 **Raw Submissions**: {total_raw_rows:,}
-✅ **Unique Records (Filtered)**: {total_unique_rows:,}
-📊 **Filtered Submissions**: {filtered_df.shape[0]:,}
+📄 **Filtered Raw Records**: {filtered_df.shape[0]:,}
+✅ **Unique Records (Post-Dedup)**: {total_unique_rows:,}
+📊 **Filtered Sessions**: {total_unique_rows:,}
 📍 **Counties Covered**: {deduped_df['County'].nunique()}
 🚫 **Counties with No Submissions**: {len(no_submission_counties)} ({', '.join(no_submission_counties)})
 """
@@ -137,7 +138,7 @@ if st.button("📋 Copy to Clipboard"):
     pyperclip.copy(summary_text)
     st.success("✅ Summary copied to clipboard!")
 
-# -------------------- WORD EXPORT --------------------
+# -------------------- EXPORT TO WORD --------------------
 st.subheader("📄 Export Summary to Word Document")
 if st.button("⬇️ Generate Word Report"):
     doc = Document()
@@ -153,15 +154,14 @@ if st.button("⬇️ Generate Word Report"):
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
-# -------------------- COUNTY VISUALIZATION --------------------
+# -------------------- COUNTY CHART + TABLE --------------------
 st.subheader("📍 Submissions by County")
 county_counts = deduped_df.groupby('County').size().reset_index(name='Submissions')
-fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Unique Submissions by County')
+fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Submissions by County')
 st.plotly_chart(fig_bar, use_container_width=True)
 
 st.subheader("📊 County Submissions Data")
 st.dataframe(county_counts)
-
 csv_data = county_counts.to_csv(index=False).encode('utf-8')
 st.download_button(
     label="⬇️ Download County Submissions CSV",
@@ -176,34 +176,39 @@ daily_counts = deduped_df.groupby(deduped_df['Timestamp'].dt.date).size().reset_
 fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Submission Trend')
 st.plotly_chart(fig_time, use_container_width=True)
 
-# -------------------- NO-SUBMISSION COUNTIES --------------------
+# -------------------- NON-SUBMITTING COUNTIES --------------------
 st.subheader("🚫 Counties with No Submissions")
 if no_submission_counties:
     st.error(f"🚫 Counties with **NO** Submissions: {', '.join(no_submission_counties)}")
 else:
-    st.success("✅ All counties have submissions!")
+    st.success("✅ All counties have submissions in selected date range.")
 
 # -------------------- DATA TABLES --------------------
+
 st.subheader("📄 Filtered Raw Records (With Duplicates)")
-st.dataframe(filtered_df)
+filtered_df_clean = filtered_df.copy()
+for col in filtered_df_clean.columns:
+    try:
+        filtered_df_clean[col] = filtered_df_clean[col].astype(str)
+    except:
+        filtered_df_clean[col] = filtered_df_clean[col].apply(lambda x: str(x) if not pd.isna(x) else "")
+st.dataframe(filtered_df_clean)
 
 st.subheader("✅ Cleaned Unique Records (Post-Filter)")
-st.dataframe(deduped_df)
+deduped_df_clean = deduped_df.copy()
+for col in deduped_df_clean.columns:
+    try:
+        deduped_df_clean[col] = deduped_df_clean[col].astype(str)
+    except:
+        deduped_df_clean[col] = deduped_df_clean[col].apply(lambda x: str(x) if not pd.isna(x) else "")
+st.dataframe(deduped_df_clean)
 
-# -------------------- DOWNLOADS --------------------
-csv_filtered = filtered_df.to_csv(index=False).encode('utf-8')
-csv_deduped = deduped_df.to_csv(index=False).encode('utf-8')
-
+# -------------------- EXPORT MERGED DATA --------------------
+st.subheader("➕ Merged Full Data")
+full_csv = df_raw.to_csv(index=False).encode('utf-8')
 st.download_button(
-    label="📥 Download Filtered Data (Raw)",
-    data=csv_filtered,
-    file_name=f"Mentorship_Filtered_{datetime.now().date()}.csv",
-    mime='text/csv'
-)
-
-st.download_button(
-    label="✅ Download Cleaned Unique Records",
-    data=csv_deduped,
-    file_name=f"Mentorship_Unique_{datetime.now().date()}.csv",
+    label="📥 Download Merged CSV",
+    data=full_csv,
+    file_name=f"Mentorship_Merged_Data_{datetime.now().date()}.csv",
     mime='text/csv'
 )
