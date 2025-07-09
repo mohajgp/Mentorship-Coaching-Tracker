@@ -87,9 +87,6 @@ st.sidebar.header("🗓️ Filter Sessions")
 min_date = df_raw['Timestamp'].min().date()
 max_date = df_raw['Timestamp'].max().date()
 
-st.sidebar.markdown(f"🗓️ **Earliest Submission**: {min_date}")
-st.sidebar.markdown(f"🗓️ **Latest Submission**: {max_date}")
-
 date_range = st.sidebar.date_input("Select Date Range:", value=(min_date, max_date), min_value=min_date, max_value=max_date)
 start_date, end_date = date_range if isinstance(date_range, tuple) else (date_range, date_range)
 
@@ -111,99 +108,64 @@ filtered_df = df_raw[
 ]
 
 deduped_df = filtered_df.drop_duplicates(subset=['Phone Number', 'ID'])
-total_unique_rows = deduped_df.shape[0]
 
 # -------------------- METRICS --------------------
 st.subheader("📈 Summary Metrics")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("📄 Filtered Raw Records", f"{filtered_df.shape[0]:,}")
-col2.metric("✅ Unique Records (Post-Dedup)", f"{total_unique_rows:,}")
-col3.metric("📊 Filtered Sessions", f"{total_unique_rows:,}")
+col2.metric("✅ Unique Records (Post-Dedup)", f"{deduped_df.shape[0]:,}")
+col3.metric("📊 Filtered Sessions", f"{deduped_df.shape[0]:,}")
 col4.metric("📍 Counties Covered", deduped_df['County'].nunique())
 
-# -------------------- AUTO SUMMARY --------------------
-st.subheader("📝 Auto-Generated Summary Report")
-no_submission_counties = [c for c in all_counties_47 if c not in deduped_df['County'].unique()]
-summary_text = f"""
-📅 **Date Range**: {start_date} to {end_date}
+# -------------------- AGE/GENDER BREAKDOWN --------------------
+st.subheader("👥 Age & Gender Breakdown")
 
-📄 **Filtered Raw Records**: {filtered_df.shape[0]:,}
-✅ **Unique Records (Post-Dedup)**: {total_unique_rows:,}
-📊 **Filtered Sessions**: {total_unique_rows:,}
-📍 **Counties Covered**: {deduped_df['County'].nunique()}
-🚫 **Counties with No Submissions**: {len(no_submission_counties)} ({', '.join(no_submission_counties)})
-"""
-st.text_area("📋 Copy this Summary for Emailing:", value=summary_text, height=200)
-if st.button("📋 Copy to Clipboard"):
-    pyperclip.copy(summary_text)
-    st.success("✅ Summary copied to clipboard!")
+def categorize(row):
+    try:
+        age = int(row['Age'])
+    except:
+        return "Unknown"
+    gender = str(row['Gender']).strip().lower()
+    if 18 <= age <= 35:
+        if gender == "female":
+            return "Young female (18–35)"
+        elif gender == "male":
+            return "Young male (18–35)"
+    elif age > 35:
+        if gender == "female":
+            return "Female above 35"
+        elif gender == "male":
+            return "Male above 35"
+    return "Unknown"
 
-# -------------------- EXPORT TO WORD --------------------
-st.subheader("📄 Export Summary to Word Document")
-if st.button("⬇️ Generate Word Report"):
-    doc = Document()
-    doc.add_heading("KNCCI Jiinue Mentorship Summary Report", level=1)
-    doc.add_paragraph(summary_text)
-    buffer = BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    st.download_button(
-        label="📥 Download Word Report",
-        data=buffer,
-        file_name=f"Mentorship_Summary_{datetime.now().date()}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
+deduped_df['Category'] = deduped_df.apply(categorize, axis=1)
 
-# -------------------- COUNTY CHART + TABLE --------------------
+cat_counts = deduped_df['Category'].value_counts()
+cols = st.columns(5)
+cols[0].metric("👩 Young Females", cat_counts.get('Young female (18–35)', 0))
+cols[1].metric("👨 Young Males", cat_counts.get('Young male (18–35)', 0))
+cols[2].metric("👩‍🦳 Females >35", cat_counts.get('Female above 35', 0))
+cols[3].metric("👨‍🦳 Males >35", cat_counts.get('Male above 35', 0))
+cols[4].metric("❓ Unknown", cat_counts.get('Unknown', 0))
+
+# -------------------- REST OF YOUR APP (unchanged) --------------------
+# County bar chart
 st.subheader("📍 Submissions by County")
 county_counts = deduped_df.groupby('County').size().reset_index(name='Submissions')
 fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Submissions by County')
 st.plotly_chart(fig_bar, use_container_width=True)
 
-st.subheader("📊 County Submissions Data")
-st.dataframe(county_counts)
-csv_data = county_counts.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="⬇️ Download County Submissions CSV",
-    data=csv_data,
-    file_name=f"County_Submissions_{datetime.now().date()}.csv",
-    mime='text/csv'
-)
-
-# -------------------- DAILY TREND --------------------
+# Daily trend
 st.subheader("📆 Submissions Over Time")
 daily_counts = deduped_df.groupby(deduped_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
 fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Submission Trend')
 st.plotly_chart(fig_time, use_container_width=True)
 
-# -------------------- NON-SUBMITTING COUNTIES --------------------
-st.subheader("🚫 Counties with No Submissions")
-if no_submission_counties:
-    st.error(f"🚫 Counties with **NO** Submissions: {', '.join(no_submission_counties)}")
-else:
-    st.success("✅ All counties have submissions in selected date range.")
-
-# -------------------- DATA TABLES --------------------
-
-st.subheader("📄 Filtered Raw Records (With Duplicates)")
-filtered_df_clean = filtered_df.copy()
-for col in filtered_df_clean.columns:
-    try:
-        filtered_df_clean[col] = filtered_df_clean[col].astype(str)
-    except:
-        filtered_df_clean[col] = filtered_df_clean[col].apply(lambda x: str(x) if not pd.isna(x) else "")
-st.dataframe(filtered_df_clean)
-
+# Cleaned table
 st.subheader("✅ Cleaned Unique Records (Post-Filter)")
-deduped_df_clean = deduped_df.copy()
-for col in deduped_df_clean.columns:
-    try:
-        deduped_df_clean[col] = deduped_df_clean[col].astype(str)
-    except:
-        deduped_df_clean[col] = deduped_df_clean[col].apply(lambda x: str(x) if not pd.isna(x) else "")
-st.dataframe(deduped_df_clean)
+st.dataframe(deduped_df)
 
-# -------------------- EXPORT MERGED DATA --------------------
+# Merged download
 st.subheader("➕ Merged Full Data")
 full_csv = df_raw.to_csv(index=False).encode('utf-8')
 st.download_button(
