@@ -176,7 +176,7 @@ st.plotly_chart(fig_bar, use_container_width=True)
 # -------------------- DAILY TREND --------------------
 st.subheader("📆 Unique Submissions Over Time (Filtered View)")
 daily_counts = deduped_filtered_df.groupby(deduped_filtered_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
-fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Unique Submission Trend")
+fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Unique Submission Trend')
 st.plotly_chart(fig_time, use_container_width=True)
 
 # -------------------- CLEANED TABLE --------------------
