@@ -54,16 +54,19 @@ def load_raw_data():
         if 'ID' not in df.columns:
             df['ID'] = pd.NA
 
+    # Ensure columns match
     for col in df_new.columns:
         if col not in df_old.columns:
             df_old[col] = pd.NA
     df_old = df_old[df_new.columns]
 
     merged_df = pd.concat([df_old, df_new], ignore_index=True)
-    return merged_df, merged_df.shape[0]
+    merged_df.dropna(subset=['Timestamp'], inplace=True)
+
+    return merged_df
 
 # -------------------- LOAD --------------------
-df_raw, total_raw_rows = load_raw_data()
+df_raw = load_raw_data()
 if df_raw.empty:
     st.error("❌ No data available! Please check both spreadsheets.")
     st.stop()
@@ -85,6 +88,7 @@ selected_counties = st.sidebar.multiselect("Select Counties:", options=sorted(co
 genders = df_raw['Gender'].dropna().unique()
 selected_genders = st.sidebar.multiselect("Select Gender:", options=sorted(genders), default=sorted(genders))
 
+# -------------------- APPLY FILTERS --------------------
 filtered_df = df_raw[
     (df_raw['Timestamp'].dt.date >= start_date) &
     (df_raw['Timestamp'].dt.date <= end_date) &
@@ -137,12 +141,21 @@ cols[4].metric("❓ Unknown", cat_counts.get('Unknown', 0))
 # -------------------- COUNTY BAR CHART --------------------
 st.subheader("📍 Submissions by County")
 county_counts = deduped_df.groupby('County').size().reset_index(name='Submissions')
-fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Submissions by County')
+fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Unique Submissions by County')
 st.plotly_chart(fig_bar, use_container_width=True)
 
-# -------------------- COUNTY STATS DOWNLOAD --------------------
-st.subheader("📊 County-Level Stats (Filtered)")
-st.dataframe(county_counts)
+# -------------------- DAILY TREND --------------------
+st.subheader("📆 Submissions Over Time")
+daily_counts = deduped_df.groupby(deduped_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
+fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Unique Submission Trend')
+st.plotly_chart(fig_time, use_container_width=True)
+
+# -------------------- CLEANED TABLE --------------------
+st.subheader("✅ Cleaned Unique Records (Post-Filter)")
+st.dataframe(deduped_df)
+
+# -------------------- DOWNLOADS --------------------
+st.subheader("⬇️ Downloads")
 
 county_csv = county_counts.to_csv(index=False).encode('utf-8')
 st.download_button(
@@ -152,22 +165,18 @@ st.download_button(
     mime='text/csv'
 )
 
-# -------------------- DAILY TREND --------------------
-st.subheader("📆 Submissions Over Time")
-daily_counts = deduped_df.groupby(deduped_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
-fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Submission Trend')
-st.plotly_chart(fig_time, use_container_width=True)
-
-# -------------------- CLEANED TABLE --------------------
-st.subheader("✅ Cleaned Unique Records (Post-Filter)")
-st.dataframe(deduped_df)
-
-# -------------------- MERGED DOWNLOAD --------------------
-st.subheader("➕ Merged Full Data")
 full_csv = df_raw.to_csv(index=False).encode('utf-8')
 st.download_button(
-    label="📥 Download Merged CSV",
+    label="📥 Download Merged Full Data CSV",
     data=full_csv,
     file_name=f"Mentorship_Merged_Data_{datetime.now().date()}.csv",
+    mime='text/csv'
+)
+
+deduped_csv = deduped_df.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="📥 Download Filtered Unique Records CSV",
+    data=deduped_csv,
+    file_name=f"Mentorship_Filtered_Unique_{datetime.now().date()}.csv",
     mime='text/csv'
 )
