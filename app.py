@@ -60,18 +60,13 @@ def load_raw_data():
     df_old = df_old[df_new.columns]
 
     merged_df = pd.concat([df_old, df_new], ignore_index=True)
-    return merged_df
+    return merged_df, merged_df.shape[0]
 
 # -------------------- LOAD --------------------
-df_raw = load_raw_data()
+df_raw, total_raw_rows = load_raw_data()
 if df_raw.empty:
     st.error("❌ No data available! Please check both spreadsheets.")
     st.stop()
-
-# -------------------- GLOBAL DEDUP --------------------
-df_raw['Month'] = df_raw['Timestamp'].dt.to_period('M')
-deduplicated_global_df = df_raw.drop_duplicates(subset=['Phone Number', 'ID'], keep='first').copy()
-global_unique_count = deduplicated_global_df.shape[0]
 
 # -------------------- FILTERS --------------------
 st.sidebar.header("🗓️ Filter Sessions")
@@ -90,7 +85,6 @@ selected_counties = st.sidebar.multiselect("Select Counties:", options=sorted(co
 genders = df_raw['Gender'].dropna().unique()
 selected_genders = st.sidebar.multiselect("Select Gender:", options=sorted(genders), default=sorted(genders))
 
-# -------------------- APPLY FILTERS --------------------
 filtered_df = df_raw[
     (df_raw['Timestamp'].dt.date >= start_date) &
     (df_raw['Timestamp'].dt.date <= end_date) &
@@ -99,42 +93,15 @@ filtered_df = df_raw[
     (df_raw['Gender'].isin(selected_genders))
 ]
 
-deduped_filtered_df = filtered_df.drop_duplicates(subset=['Phone Number', 'ID'])
+deduped_df = filtered_df.drop_duplicates(subset=['Phone Number', 'ID'])
 
 # -------------------- METRICS --------------------
 st.subheader("📈 Summary Metrics")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("📄 Filtered Raw Records", f"{filtered_df.shape[0]:,}")
-col2.metric("✅ Unique After Cleaning", f"{deduped_filtered_df.shape[0]:,}")
-col3.metric("📊 Global Unique Participants", f"{global_unique_count:,}")
-col4.metric("📍 Counties Covered", deduped_filtered_df['County'].nunique())
-
-# -------------------- GLOBAL UNIQUE: MONTHLY & COUNTY --------------------
-st.subheader("📊 Monthly & County Stats (Global Unique Participants)")
-
-monthly_county_stats = (
-    deduplicated_global_df
-    .groupby(['Month', 'County'])
-    .size()
-    .reset_index(name='Unique Participants')
-    .sort_values(['Month', 'County'])
-)
-monthly_county_stats['Month'] = monthly_county_stats['Month'].astype(str)
-
-if not monthly_county_stats.empty:
-    st.dataframe(monthly_county_stats, use_container_width=True)
-
-    heatmap_data = monthly_county_stats.pivot(index='County', columns='Month', values='Unique Participants').fillna(0)
-    fig_heatmap = px.imshow(
-        heatmap_data,
-        labels=dict(x="Month", y="County", color="Participants"),
-        text_auto=True,
-        aspect="auto",
-        title="Unique Participants by County and Month (Global Dedup)"
-    )
-    st.plotly_chart(fig_heatmap, use_container_width=True)
-else:
-    st.info("ℹ️ No data for monthly & county breakdown.")
+col2.metric("✅ Unique Records (Post-Dedup)", f"{deduped_df.shape[0]:,}")
+col3.metric("📊 Filtered Sessions", f"{deduped_df.shape[0]:,}")
+col4.metric("📍 Counties Covered", deduped_df['County'].nunique())
 
 # -------------------- AGE/GENDER BREAKDOWN --------------------
 st.subheader("👥 Age & Gender Breakdown")
@@ -157,9 +124,9 @@ def categorize(row):
             return "Male above 35"
     return "Unknown"
 
-deduped_filtered_df['Category'] = deduped_filtered_df.apply(categorize, axis=1)
+deduped_df['Category'] = deduped_df.apply(categorize, axis=1)
 
-cat_counts = deduped_filtered_df['Category'].value_counts()
+cat_counts = deduped_df['Category'].value_counts()
 cols = st.columns(5)
 cols[0].metric("👩 Young Females", cat_counts.get('Young female (18–35)', 0))
 cols[1].metric("👨 Young Males", cat_counts.get('Young male (18–35)', 0))
@@ -168,33 +135,41 @@ cols[3].metric("👨‍🦳 Males >35", cat_counts.get('Male above 35', 0))
 cols[4].metric("❓ Unknown", cat_counts.get('Unknown', 0))
 
 # -------------------- COUNTY BAR CHART --------------------
-st.subheader("📍 Submissions by County (Filtered View)")
-county_counts = deduped_filtered_df.groupby('County').size().reset_index(name='Submissions')
-fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Unique Submissions by County')
+st.subheader("📍 Submissions by County")
+county_counts = deduped_df.groupby('County').size().reset_index(name='Submissions')
+fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Submissions by County')
 st.plotly_chart(fig_bar, use_container_width=True)
 
+# -------------------- COUNTY STATS DOWNLOAD --------------------
+st.subheader("📊 County-Level Stats (Filtered)")
+st.dataframe(county_counts)
+
+county_csv = county_counts.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="📥 Download County Stats CSV",
+    data=county_csv,
+    file_name=f"Mentorship_County_Stats_{datetime.now().date()}.csv",
+    mime='text/csv'
+)
+
 # -------------------- DAILY TREND --------------------
-st.subheader("📆 Unique Submissions Over Time (Filtered View)")
-daily_counts = deduped_filtered_df.groupby(deduped_filtered_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
-fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Unique Submission Trend')
+st.subheader("📆 Submissions Over Time")
+daily_counts = deduped_df.groupby(deduped_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
+fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Submission Trend')
 st.plotly_chart(fig_time, use_container_width=True)
 
 # -------------------- CLEANED TABLE --------------------
 st.subheader("✅ Cleaned Unique Records (Post-Filter)")
-st.dataframe(deduped_filtered_df)
+st.dataframe(deduped_df)
 
-# -------------------- DOWNLOADS --------------------
-st.subheader("⬇️ Downloads")
+# -------------------- MERGED DOWNLOAD --------------------
+st.subheader("➕ Merged Full Data")
+full_csv = df_raw.to_csv(index=False).encode('utf-8')
 st.download_button(
-    label="📥 Download Global Unique Monthly & County Stats CSV",
-    data=monthly_county_stats.to_csv(index=False).encode('utf-8'),
-    file_name=f"Mentorship_Global_Unique_Monthly_County_{datetime.now().date()}.csv",
+    label="📥 Download Merged CSV",
+    data=full_csv,
+    file_name=f"Mentorship_Merged_Data_{datetime.now().date()}.csv",
     mime='text/csv'
 )
 
-st.download_button(
-    label="📥 Download Filtered Unique Records",
-    data=deduped_filtered_df.to_csv(index=False).encode('utf-8'),
-    file_name=f"Mentorship_Filtered_Unique_{datetime.now().date()}.csv",
-    mime='text/csv'
-)
+
