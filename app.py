@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import pyperclip
+from io import BytesIO
+from docx import Document
 
 # -------------------- PAGE CONFIG --------------------
 st.set_page_config(
@@ -61,6 +64,17 @@ def load_raw_data():
 
     merged_df = pd.concat([df_old, df_new], ignore_index=True)
     return merged_df, merged_df.shape[0]
+
+# -------------------- ALL COUNTIES --------------------
+all_counties_47 = [
+    "Mombasa", "Kwale", "Kilifi", "Tana River", "Lamu", "Taita Taveta",
+    "Garissa", "Wajir", "Mandera", "Marsabit", "Isiolo", "Meru", "Tharaka Nithi",
+    "Embu", "Kitui", "Machakos", "Makueni", "Nyandarua", "Nyeri", "Kirinyaga",
+    "Murang'a", "Kiambu", "Turkana", "West Pokot", "Samburu", "Trans Nzoia",
+    "Uasin Gishu", "Elgeyo Marakwet", "Nandi", "Baringo", "Laikipia", "Nakuru",
+    "Narok", "Kajiado", "Kericho", "Bomet", "Kakamega", "Vihiga", "Bungoma",
+    "Busia", "Siaya", "Kisumu", "Homa Bay", "Migori", "Kisii", "Nyamira", "Nairobi"
+]
 
 # -------------------- LOAD --------------------
 df_raw, total_raw_rows = load_raw_data()
@@ -134,35 +148,24 @@ cols[2].metric("👩‍🦳 Females >35", cat_counts.get('Female above 35', 0))
 cols[3].metric("👨‍🦳 Males >35", cat_counts.get('Male above 35', 0))
 cols[4].metric("❓ Unknown", cat_counts.get('Unknown', 0))
 
-# -------------------- COUNTY BAR CHART --------------------
+# -------------------- REST OF YOUR APP (unchanged) --------------------
+# County bar chart
 st.subheader("📍 Submissions by County")
 county_counts = deduped_df.groupby('County').size().reset_index(name='Submissions')
 fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Submissions by County')
 st.plotly_chart(fig_bar, use_container_width=True)
 
-# -------------------- COUNTY STATS DOWNLOAD --------------------
-st.subheader("📊 County-Level Stats (Filtered)")
-st.dataframe(county_counts)
-
-county_csv = county_counts.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="📥 Download County Stats CSV",
-    data=county_csv,
-    file_name=f"Mentorship_County_Stats_{datetime.now().date()}.csv",
-    mime='text/csv'
-)
-
-# -------------------- DAILY TREND --------------------
+# Daily trend
 st.subheader("📆 Submissions Over Time")
 daily_counts = deduped_df.groupby(deduped_df['Timestamp'].dt.date).size().reset_index(name='Submissions')
 fig_time = px.line(daily_counts, x='Timestamp', y='Submissions', title='Daily Submission Trend')
 st.plotly_chart(fig_time, use_container_width=True)
 
-# -------------------- CLEANED TABLE --------------------
+# Cleaned table
 st.subheader("✅ Cleaned Unique Records (Post-Filter)")
 st.dataframe(deduped_df)
 
-# -------------------- MERGED DOWNLOAD --------------------
+# Merged download
 st.subheader("➕ Merged Full Data")
 full_csv = df_raw.to_csv(index=False).encode('utf-8')
 st.download_button(
