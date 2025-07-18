@@ -82,6 +82,29 @@ if df_raw.empty:
     st.error("❌ No data available! Please check both spreadsheets.")
     st.stop()
 
+# -------------------- UNFILTERED COUNTY TOTALS --------------------
+st.subheader("📍 Unfiltered Submissions by County (All Data)")
+
+unfiltered_county_counts = df_raw.groupby('County').size().reset_index(name='Submissions (Unfiltered)')
+
+fig_unfiltered_bar = px.bar(
+    unfiltered_county_counts,
+    x='County', y='Submissions (Unfiltered)', color='County',
+    title='Unfiltered Number of Submissions by County'
+)
+st.plotly_chart(fig_unfiltered_bar, use_container_width=True)
+
+st.subheader("📊 Unfiltered County Submissions Data")
+st.dataframe(unfiltered_county_counts)
+
+unfiltered_csv = unfiltered_county_counts.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="⬇️ Download Unfiltered County Submissions CSV",
+    data=unfiltered_csv,
+    file_name=f"Unfiltered_County_Submissions_{datetime.now().date()}.csv",
+    mime='text/csv'
+)
+
 # -------------------- FILTERS --------------------
 st.sidebar.header("🗓️ Filter Sessions")
 min_date = df_raw['Timestamp'].min().date()
@@ -155,16 +178,16 @@ if st.button("⬇️ Generate Word Report"):
     )
 
 # -------------------- COUNTY CHART + TABLE --------------------
-st.subheader("📍 Submissions by County")
+st.subheader("📍 Filtered Submissions by County")
 county_counts = deduped_df.groupby('County').size().reset_index(name='Submissions')
 fig_bar = px.bar(county_counts, x='County', y='Submissions', color='County', title='Number of Submissions by County')
 st.plotly_chart(fig_bar, use_container_width=True)
 
-st.subheader("📊 County Submissions Data")
+st.subheader("📊 Filtered County Submissions Data")
 st.dataframe(county_counts)
 csv_data = county_counts.to_csv(index=False).encode('utf-8')
 st.download_button(
-    label="⬇️ Download County Submissions CSV",
+    label="⬇️ Download Filtered County Submissions CSV",
     data=csv_data,
     file_name=f"County_Submissions_{datetime.now().date()}.csv",
     mime='text/csv'
@@ -184,24 +207,11 @@ else:
     st.success("✅ All counties have submissions in selected date range.")
 
 # -------------------- DATA TABLES --------------------
-
 st.subheader("📄 Filtered Raw Records (With Duplicates)")
-filtered_df_clean = filtered_df.copy()
-for col in filtered_df_clean.columns:
-    try:
-        filtered_df_clean[col] = filtered_df_clean[col].astype(str)
-    except:
-        filtered_df_clean[col] = filtered_df_clean[col].apply(lambda x: str(x) if not pd.isna(x) else "")
-st.dataframe(filtered_df_clean)
+st.dataframe(filtered_df)
 
 st.subheader("✅ Cleaned Unique Records (Post-Filter)")
-deduped_df_clean = deduped_df.copy()
-for col in deduped_df_clean.columns:
-    try:
-        deduped_df_clean[col] = deduped_df_clean[col].astype(str)
-    except:
-        deduped_df_clean[col] = deduped_df_clean[col].apply(lambda x: str(x) if not pd.isna(x) else "")
-st.dataframe(deduped_df_clean)
+st.dataframe(deduped_df)
 
 # -------------------- EXPORT MERGED DATA --------------------
 st.subheader("➕ Merged Full Data")
@@ -212,5 +222,3 @@ st.download_button(
     file_name=f"Mentorship_Merged_Data_{datetime.now().date()}.csv",
     mime='text/csv'
 )
-
-
