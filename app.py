@@ -1,100 +1,77 @@
-import streamlit as st
 import pandas as pd
-import numpy as np
-from datetime import datetime
+import streamlit as st
 
-st.set_page_config(page_title="Mentorship Dashboard", layout="wide")
-st.title("🤝 Mentorship Session Tracker")
+st.title("KNCCI Mobilization Summary - Submissions by County")
 
-uploaded_file = st.file_uploader("Upload cleaned mentorship Excel file", type=["xlsx"])
-if uploaded_file is None:
-    st.info("Please upload a file to proceed.")
-    st.stop()
+# File uploader
+uploaded_file = st.file_uploader("Upload the Mobilization Excel file", type=["xlsx"])
 
-# -------------------- LOAD DATA --------------------
-df = pd.read_excel(uploaded_file)
-df.columns = df.columns.str.strip()
+if uploaded_file:
+    # Read the file
+    df = pd.read_excel(uploaded_file)
 
-# Standardize column names
-rename_map = {
-    "Session Date": "Date",
-    "County of session": "County",
-    "Phone Number": "Phone",
-    "ID Number": "ID",
-    "Session Topic": "Topic",
-    "Mentor Name": "Mentor",
-    "Gender of the Participant": "Gender",
-    "Age  of the Participant": "Age"
-}
-df.rename(columns=rename_map, inplace=True)
+    # Strip whitespace from column names
+    df.columns = df.columns.str.strip()
 
-# Parse dates and clean strings
-df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-df = df[df["Date"].notna()]
-df["Phone"] = df["Phone"].astype(str).str.extract(r'(\d{9,12})')
-df["ID"] = df["ID"].astype(str).str.extract(r'(\d{5,})')
-df["Gender"] = df["Gender"].str.strip().str.title()
-df["County"] = df["County"].str.strip().str.title()
-df["Mentor"] = df["Mentor"].str.strip().str.title()
+    # Normalize key column names
+    column_map = {
+        "County": "County",
+        "Name of the Participant": "Name",
+        " Phone Number(verify before entry)": "Phone",
+        "Verified ID Number(Verify before entry)": "ID",
+        "Age  of the Participant": "Age",
+        "Gender of the Participant": "Gender"
+    }
 
-# -------------------- FILTERS --------------------
-st.sidebar.header("📊 Filters")
-all_counties = df["County"].dropna().unique()
-selected_counties = st.sidebar.multiselect("Select Counties", sorted(all_counties), default=sorted(all_counties))
-start_date = st.sidebar.date_input("Start Date", df["Date"].min())
-end_date = st.sidebar.date_input("End Date", df["Date"].max())
+    df = df.rename(columns=column_map)
 
-date_mask = (df["Date"] >= pd.to_datetime(start_date)) & (df["Date"] <= pd.to_datetime(end_date))
-county_mask = df["County"].isin(selected_counties)
-filtered_df = df[date_mask & county_mask]
+    # Remove rows with missing county or name
+    df_cleaned = df.dropna(subset=["County", "Name"])
 
-# -------------------- DEDUPLICATION --------------------
-deduped_df = filtered_df.drop_duplicates(subset=["ID", "Phone", "County", "Date"], keep="first")
-total_unique_rows = deduped_df.shape[0]
+    # Group by County and count submissions
+    county_counts = df_cleaned.groupby("County")["Name"].count().reset_index()
+    county_counts = county_counts.rename(columns={"Name": "Submissions"})
 
-# -------------------- METRICS --------------------
-st.subheader("\ud83d\udcca Summary Metrics")
+    # Ensure all 47 counties are included
+    all_counties = [
+        "Mombasa", "Kwale", "Kilifi", "Tana River", "Lamu", "Taita Taveta",
+        "Garissa", "Wajir", "Mandera", "Marsabit", "Isiolo", "Meru", "Tharaka Nithi",
+        "Embu", "Kitui", "Machakos", "Makueni", "Nyandarua", "Nyeri", "Kirinyaga",
+        "Murang'a", "Kiambu", "Turkana", "West Pokot", "Samburu", "Trans Nzoia",
+        "Uasin Gishu", "Elgeyo Marakwet", "Nandi", "Baringo", "Laikipia", "Nakuru",
+        "Narok", "Kajiado", "Kericho", "Bomet", "Kakamega", "Vihiga", "Bungoma",
+        "Busia", "Siaya", "Kisumu", "Homa Bay", "Migori", "Kisii", "Nyamira", "Nairobi"
+    ]
 
-# Youth and Female Youth Calculation
-youth_df = deduped_df[(deduped_df['Age'] >= 18) & (deduped_df['Age'] <= 35)]
-female_youth_df = youth_df[youth_df['Gender'] == "Female"]
+    full_county_df = pd.DataFrame({'County': all_counties})
+    merged = full_county_df.merge(county_counts, on='County', how='left')
+    merged['Submissions'] = merged['Submissions'].fillna(0).astype(int)
 
-total_records = deduped_df.shape[0]
-youth_pct = (len(youth_df) / total_records * 100) if total_records else 0
-female_youth_pct = (len(female_youth_df) / total_records * 100) if total_records else 0
+    # Show submission table
+    st.subheader("County Submissions")
+    st.dataframe(merged.sort_values("Submissions", ascending=False).reset_index(drop=True))
 
-col1, col2, col3, col4, col5, col6 = st.columns(6)
-col1.metric("\ud83d\udcc4 Filtered Raw Records", f"{filtered_df.shape[0]:,}")
-col2.metric("\u2705 Unique Records (Post-Dedup)", f"{total_unique_rows:,}")
-col3.metric("\ud83d\udcca Filtered Sessions", f"{total_unique_rows:,}")
-col4.metric("\ud83d\udccd Counties Covered", deduped_df['County'].nunique())
-col5.metric("\ud83e\uddd2 % Youth (18-35)", f"{youth_pct:.1f}%")
-col6.metric("\u2640\ufe0f % Female Youth", f"{female_youth_pct:.1f}%")
+    # Add Youth and Female Youth % calculation
+    df_cleaned['Gender'] = df_cleaned['Gender'].astype(str).str.strip().str.lower()
+    df_cleaned['Age'] = pd.to_numeric(df_cleaned['Age'], errors='coerce')
 
-# -------------------- AUTO SUMMARY --------------------
-full_county_list = [
-    "Homa Bay", "Trans Nzoia", "Kisumu", "Baringo", "Uasin Gishu", "Kericho", "Marsabit", "Kakamega",
-    "Nyandarua", "Kajiado", "Nairobi", "Bungoma", "West Pokot", "Nyeri", "Nandi", "Laikipia", "Makueni",
-    "Samburu", "Busia", "Kirinyaga", "Nakuru", "Isiolo", "Tharaka Nithi", "Elgeyo Marakwet", "Kiambu", "Kisii",
-    "Siaya", "Turkana", "Nyamira", "Murang'A", "Vihiga", "Wajir", "Machakos", "Migori", "Kitui", "Kwale",
-    "Tana River", "Bomet", "Narok", "Mombasa", "Mandera", "Garissa", "Embu", "Lamu", "Taita Taveta",
-    "Meru", "Kilifi"
-]
-no_submission_counties = [c for c in full_county_list if c not in deduped_df["County"].unique()]
+    is_youth = (df_cleaned['Age'] >= 18) & (df_cleaned['Age'] <= 35)
+    is_female_youth = is_youth & (df_cleaned['Gender'] == 'female')
 
-summary_text = f"""
-\ud83d\udcc5 **Date Range**: {start_date} to {end_date}
+    county_summary = df_cleaned.groupby('County').agg(
+        Total=('Name', 'count'),
+        Youth=('Age', lambda x: ((x >= 18) & (x <= 35)).sum()),
+        Female_Youth=('Age', lambda x: ((x >= 18) & (x <= 35) & (df_cleaned.loc[x.index, 'Gender'] == 'female')).sum())
+    ).reset_index()
 
-\ud83d\udcc4 **Filtered Raw Records**: {filtered_df.shape[0]:,}
-\u2705 **Unique Records (Post-Dedup)**: {total_unique_rows:,}
-\ud83d\udcca **Filtered Sessions**: {total_unique_rows:,}
-\ud83e\uddd2 **% Youth (18–35 years)**: {youth_pct:.1f}%
-\u2640\ufe0f **% Female Youth (18–35)**: {female_youth_pct:.1f}%
-\ud83d\udccd **Counties Covered**: {deduped_df['County'].nunique()}
-\ud83d\udeab **Counties with No Submissions**: {len(no_submission_counties)} ({', '.join(no_submission_counties)})
-"""
-st.info(summary_text)
+    county_summary['% Youth'] = (county_summary['Youth'] / county_summary['Total']) * 100
+    county_summary['% Female Youth'] = (county_summary['Female_Youth'] / county_summary['Total']) * 100
 
-# -------------------- DATA TABLE --------------------
-st.subheader("\ud83d\udcc3 Cleaned Mentorship Submissions")
-st.dataframe(deduped_df.sort_values("Date", ascending=False), use_container_width=True)
+    st.subheader("Youth Metrics by County")
+    st.dataframe(county_summary.style.format({
+        "% Youth": "{:.1f}%", 
+        "% Female Youth": "{:.1f}%"
+    }))
+
+    # Show total number of rows for context
+    st.info(f"Total Rows in Dataset: {len(df)} | Rows with valid County & Name: {len(df_cleaned)}")
