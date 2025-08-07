@@ -141,6 +141,30 @@ col2.metric("✅ Unique Records (Post-Dedup)", f"{total_unique_rows:,}")
 col3.metric("📊 Filtered Sessions", f"{total_unique_rows:,}")
 col4.metric("📍 Counties Covered", deduped_df['County'].nunique())
 
+# -------------------- OVERALL YOUTH & FEMALE YOUTH METRICS (FILTERED RAW DATA) --------------------
+st.subheader("🧮 Overall Youth Participation (Raw Filtered Data)")
+
+# Ensure age is numeric
+filtered_df['Age'] = pd.to_numeric(filtered_df['Age'], errors='coerce')
+
+# Youths (18–35)
+youth_raw_df = filtered_df[(filtered_df['Age'] >= 18) & (filtered_df['Age'] <= 35)]
+total_youth_raw = youth_raw_df.shape[0]
+
+# Female Youths
+female_youth_raw = youth_raw_df[youth_raw_df['Gender'].str.lower() == 'female'].shape[0]
+
+# Percentages
+total_filtered_raw = filtered_df.shape[0]
+percent_youth_raw = (total_youth_raw / total_filtered_raw) * 100 if total_filtered_raw else 0
+percent_female_youth_raw = (female_youth_raw / total_filtered_raw) * 100 if total_filtered_raw else 0
+
+# Display metrics
+col_yr1, col_yr2 = st.columns(2)
+col_yr1.metric("🧑 Youths (18–35) – All Records", f"{percent_youth_raw:.2f}% ({total_youth_raw:,})")
+col_yr2.metric("👩 Female Youths (18–35) – All Records", f"{percent_female_youth_raw:.2f}% ({female_youth_raw:,})")
+
+
 # -------------------- YOUTH & FEMALE YOUTH ANALYSIS --------------------
 st.subheader("🧑‍🎓 Youth Participation Overview (Ages 18–35)")
 
